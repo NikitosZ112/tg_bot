@@ -1,56 +1,116 @@
+import asyncio
 import logging
-import requests 
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import CommandStart
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.enums import ParseMode
+from aiogram import enums
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.default import DefaultBotProperties
 
 # Настройка логирования
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
-keyboard = [
-    [KeyboardButton("Backend devoloper")],
-    [KeyboardButton("Frontend devoloper")],
-    [KeyboardButton("CEO")],
-    [KeyboardButton("Fullstack")],
-    [KeyboardButton("Data science")],
+# Замените на свой токен
+BOT_TOKEN = "8165569024:AAEu0BF0wsxfFVw7Y65XxoxmgHEDo6gzENE"
+
+# Учебные материалы (замените на свои)
+learning_materials = {
+    "Backend developer": {
+        "description": "Изучите разработку серверной части веб-приложений.",
+        "resources": [
+            {"name": "Python Backend Development", "url": "https://example.com/python_backend"},
+            {"name": "Node.js Backend Development", "url": "https://example.com/nodejs_backend"}
+        ]
+    },
+    "Frontend developer": {
+        "description": "Изучите разработку пользовательского интерфейса веб-приложений.",
+        "resources": [
+            {"name": "React Tutorial", "url": "https://example.com/react"},
+            {"name": "Vue.js Tutorial", "url": "https://example.com/vue"}
+        ]
+    },
+    "CEO": {
+        "description": "Материалы для руководителей и предпринимателей.",
+        "resources": [
+            {"name": "Startup Lessons", "url": "https://example.com/startup"},
+            {"name": "Leadership Skills", "url": "https://example.com/leadership"}
+        ]
+    },
+    "Fullstack": {
+        "description": "Комплексное обучение веб-разработке.",
+        "resources": [
+            {"name": "MERN Stack Tutorial", "url": "https://example.com/mern"},
+            {"name": "Django Fullstack", "url": "https://example.com/django"}
+        ]
+    },
+    "Data science": {
+        "description": "Изучите анализ данных и машинное обучение.",
+        "resources": [
+            {"name": "Python for Data Science", "url": "https://example.com/datascience"},
+            {"name": "Machine Learning Basics", "url": "https://example.com/machinelearning"}
+        ]
+    }
+}
+
+# Кнопка "Назад"
+BACK_BUTTON = "Назад"
+
+# Создание главной клавиатуры
+main_keyboard = [
+    [KeyboardButton(text="Backend developer")],
+    [KeyboardButton(text="Frontend developer")],
+    [KeyboardButton(text="CEO")],
+    [KeyboardButton(text="Fullstack")],
+    [KeyboardButton(text="Data science")],
 ]
-reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+main_reply_markup = ReplyKeyboardMarkup(keyboard=main_keyboard, resize_keyboard=True)
 
-# Функция для обработки текстовых сообщений (при нажатии на кнопки)
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    text = update.message.text
-    if text == "Backend devoloper":
-        await update.message.reply_text("Backend devoloper")
-    elif text == "Frontend devoloper":
-        await update.message.reply_text("Frontend devoloper")
-    elif text == "CEO":
-        await update.message.reply_text("CEO")
-    elif text == "Fullstack":
-        await update.message.reply_text("Fullstack")
-    elif text == "Data science":
-        await update.message.reply_text("Data science")
-    else:
-        await update.message.reply_text("Я не понимаю эту команду.")
+# Функция для создания клавиатуры с ресурсами и кнопкой "Назад"
+def create_topic_keyboard(topic: str):
+    keyboard = []
+    for resource in learning_materials[topic]["resources"]:
+        keyboard.append([KeyboardButton(text=resource["name"])])  # Кнопки с названиями ресурсов
+    keyboard.append([KeyboardButton(text=BACK_BUTTON)])  # Кнопка "Назад"
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
-# Функция для отправки клавиатуры при запуске бота
-async def post_init(application: ApplicationBuilder) -> None:
-    await application.bot.set_my_commands([])  # Убираем команды
-    image_url = "https://img.lovepik.com/png/20231112/cartoon-smart-person-pointing-with-glasses-sticker-vector-clipart-arm_572635_wh860.png"  # Замените на URL вашей картинки
+# Инициализация бота и диспетчера
+async def main():
+    session = AiohttpSession()
+    bot = Bot(BOT_TOKEN, session=session, default=DefaultBotProperties(parse_mode=enums.ParseMode.HTML))
+    dp = Dispatcher()
+
+    # Обработчик команды /start
+    @dp.message(CommandStart())
+    async def start_command(message: types.Message):
+        await message.answer("Добро пожаловать! Я – твой личный наставник. Выбери тему:", reply_markup=main_reply_markup)
+
+    # Обработчик текстовых сообщений (кнопки)
+    @dp.message(F.text.in_(list(learning_materials.keys())))
+    async def learning_topic(message: types.Message):
+        topic = message.text
+        topic_keyboard = create_topic_keyboard(topic)
+        await message.answer(f"<b>{topic}</b>\n\n{learning_materials[topic]['description']}", reply_markup=topic_keyboard)
+
+    # Обработчик кнопки "Назад"
+    @dp.message(F.text == BACK_BUTTON)
+    async def back_button_handler(message: types.Message):
+        await message.answer("Вы вернулись в главное меню.", reply_markup=main_reply_markup)
+
+    # Обработчик ссылок
+    @dp.message(F.text.in_([resource["name"] for topic in learning_materials.values() for resource in topic["resources"]]))
+    async def resource_button_handler(message: types.Message):
+         for topic, data in learning_materials.items():
+                for resource in data["resources"]:
+                    if resource["name"] == message.text:
+                         await message.answer(f"Ссылка на источник: {resource['url']}")
+                         return
+    # Запуск процесса поллинга
     try:
-        # Отправляем картинку
-        with open(image_path, 'rb') as photo_file:
-            await application.bot.send_photo(chat_id=286683463, 
-                                            photo=photo_file,
-                                            caption="Добро пожаловать! Я – твой личный наставник в безграничном мире информации. Моя цель – помочь тебе раскрыть свой потенциал и получить новые знания легко и с удовольствием. Просто выбери интересующую тебя тему, и я направлю тебя на путь успеха!",
-                                            reply_markup=reply_markup)
-    except Exception as e:
-        logger.error(f"Ошибка при отправке картинки: {e}")
-if __name__ == '__main__':
-    # Вставьте свой токен
-    app = ApplicationBuilder().token("8165569024:AAEu0BF0wsxfFVw7Y65XxoxmgHEDo6gzENE").post_init(post_init).build()
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
 
-    # Регистрация обработчика текстовых сообщений
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # Запуск бота
-    app.run_polling()
+# Запуск бота
+if __name__ == "__main__":
+    asyncio.run(main())
